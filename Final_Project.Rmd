@@ -1,0 +1,607 @@
+---
+title: "group11finalproject"
+author: "Group 11"
+date: "2019年10月11日"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#library
+```{r}
+library(dplyr)
+library(data.table)
+library(corrplot)
+library(MASS)
+library(plotrix)
+library(ggplot2)
+```
+
+```{r}
+data=read.csv("~/Desktop/Video_Games_Sales.csv")
+publisher_rank=read.csv("~/Desktop/rank.csv")
+#summary(data)
+```
+
+```{r}
+##remove empty value
+#remove empty number
+checkmissing=complete.cases(data)
+data1=data[checkmissing,]
+#str(data1)
+
+#remove empty rating
+#count(data1$Rating=="")
+data2=data1[data1$Rating!="",]
+
+#remove N/A year of release
+#count(data$Year_of_Release=="N/A")
+data3=data2[data2$Year_of_Release!="N/A",]
+data3$Genre=factor(data3$Genre)
+
+#summary(data3)
+```
+
+```{r}
+##adjust rating of K-A to E
+data3$Rating[data3$Rating == "K-A"]= "E"
+
+#unique(data3$Rating)
+data4=data3[data3$Rating!="RP",]
+data4$Rating=factor(data4$Rating)
+
+```
+
+```{r}
+#change the factor variable into numeric variable
+data5=data4[,c(1:14,16)]
+data5$User_Score=as.numeric(as.character(data5$User_Score))
+data5$Year_of_Release=as.numeric(as.character(data5$Year_of_Release))
+
+#filter out year of release before 1998
+datafull=filter(data5,Year_of_Release>=1998)
+
+#rename the sale column for ease of use
+setnames(datafull,old=c("NA_Sales","EU_Sales","JP_Sales","Other_Sales","Global_Sales"),new=c("NAS","EUS","JPS","OtherS","GlobalS"))
+
+```
+
+#create new variables
+```{r}
+#create a new column for age of game
+datafull$Age=2019-datafull$Year_of_Release
+
+
+#create a new column for new platform
+sony<-c('PS','PS2','PS3','PS4' ,'PSP','PSV')
+microsoft<-c('X360','XB','XOne')
+nintendo<-c('3DS','DS','GBA','GC','Wii','WiiU')
+sega<-c('DC')
+pc <-c('PC')
+
+newPlatform<-function(x){
+    if (x %in% sony == TRUE) {return('Sony PlayStation')}
+    else if(x %in% microsoft == TRUE) {return('Microsoft Xbox')}
+    else if(x %in% nintendo == TRUE) {return('Nintendo')}
+else if(x %in% sega == TRUE) {return('Sega')}
+else if(x %in% pc == TRUE) {return('PC')}
+    else{return('OTHER')}
+}
+
+datafull$newPlatform<-sapply(datafull$Platform, newPlatform)
+#str(datafull)
+datafull$newPlatform=as.factor(datafull$newPlatform)
+
+```
+
+#create a binary variable for top 8 publishers over 2010-2016
+```{r}
+#publisher_rank
+popular_publisher=unique(publisher_rank$Publisher)
+popular_publisher = as.vector(popular_publisher)
+#popular_publisher
+
+#create a binary variable 1 = popular publisher,0 = not a popular publisher
+pattern=paste(popular_publisher, collapse = "|") 
+tfpopular=grepl(pattern, datafull$Publisher)
+datafull$is_popular=ifelse(tfpopular == TRUE, 1,0)
+#head(datafull)
+#summary(datafull)
+#unique(datafull$Publisher)
+head(publisher_rank)
+```
+
+```{r}
+#1.Industry Overview (year of release)
+gcount<- as.data.frame(table(datafull$Year_of_Release))
+colnames(gcount) <- c("Year","Number_of_Games")
+
+#aggregate sales in year
+Sales<- data.frame(Year=datafull$Year_of_Release,NAS=datafull$NAS,EUS=datafull$EUS,JPS=datafull$JPS,OtherS=datafull$OtherS,GlobalS=datafull$GlobalS)
+attach(Sales)
+yearsales <- aggregate(Sales,by=list(Year),FUN=sum)
+yearsales <- yearsales[,-2]
+
+data <- data.frame(cbind(gcount,yearsales))
+year <- c(1998,1999,2000,2001,2002,2003,2004,2005,2006,2007,2008,
+          2009,2010,2011,2012,2013,2014,2015,2016)
+
+#Number of Games & Sales by year
+
+Globalp<-twoord.plot(year,data$GlobalS,year,data$Number_of_Games,
+                     main="Global Sales vs Number of Game Released",
+                     lcol='royalblue4',
+                     rcol='darkred',
+                     ylab="Global Sales",
+                     rylab="Number of Game Released",
+                     type=c("bar",'l'))
+
+#Regional Sales
+regionS<- ggplot(data,aes(x=Year,y=NAS,group= 1, colour="NAS"))+
+  geom_line(size=2)+
+  geom_line(aes(y=EUS,colour="EUS"),size=2)+
+  geom_line(aes(y=JPS,colour="JPS"),size=2)+
+  geom_line(aes(y=OtherS,colour="OtherS"),size=2)+
+  labs(y="Total Sales",title="Regional Sales")+
+  scale_colour_manual("",
+                      breaks = c("NAS", "EUS", "JPS","OtherS"),
+                      values = c("orange", "limegreen", "royalblue","tomato"))+
+  theme(axis.text.x = element_text(size = 10,angle = 45,hjust = 1))
+
+
+```
+
+```{r}
+#####2.1Platform vs. no.of games
+#Number of games in 5 platform overview
+  
+tcount <- as.data.frame(table(datafull$newPlatform))
+colnames(tcount) <- c("Platform","Number_of_Games")
+
+#Polar Plot Comparison
+
+p1 <- ggplot(tcount,aes(x=Platform, y=tcount$Number_of_Games, fill=Platform))+ geom_bar(stat="identity")
+p1 + coord_polar() + scale_fill_brewer(palette="Pastel1") + theme_bw() +
+  labs(title = 'Platform Comparison on Number of Game Released') +
+  ylab("Number of Games") 
+
+#Nmber of games in 5 platform by year
+
+pcount <- as.data.frame(table(datafull$Year_of_Release,datafull$newPlatform))
+colnames(pcount) <- c("Year","Platform","Number_of_Games")
+
+#Percentage stacked barchart
+
+p4 <- ggplot(pcount,aes(x= Year,y= Number_of_Games,group=Platform,fill=Platform)) +
+  geom_bar(stat="identity",position = "fill") +
+  labs(title='Proportion on the Number of Games across Platform') +
+  theme(axis.text.x = element_text(size = 12,angle = 45,hjust = 1)) +
+  ylab("Proportion") + scale_fill_brewer(palette="Pastel1")
+
+p5<- ggplot(data=pcount) + 
+  geom_bar(mapping=aes(x = Year, y= Number_of_Games, fill=newPlatform), stat="identity", position = "dodge") + 
+  scale_fill_brewer(palette="Pastel1")+
+  labs(title = "The Number of Games released by Platform by Year") 
+
+#####2.2 Sales vs. Platform 
+
+#Sales vs. Platform - "dodge" Bar plot by Year
+AllSales <- datafull %>% group_by(Year_of_Release, newPlatform, Genre, Rating) %>% 
+            summarise(GlobalS = sum(GlobalS), NAS=sum(NAS),EUS=sum(EUS),JPS=sum(JPS),OtherS=sum(OtherS))
+            ggplot(data=AllSales) + 
+            geom_bar(mapping=aes(x = Year_of_Release, y= GlobalS, fill=newPlatform), stat="identity", position = "dodge") + 
+            scale_fill_brewer(palette="Pastel1")+
+            labs(title = "Platform Comparison on Global Sales by Year") 
+            
+ggplot(AllSales, aes(x= Year_of_Release,y= GlobalS ,group=newPlatform,fill=newPlatform)) +
+              geom_bar(stat="identity",position = "fill") +
+              labs(title='Proportion on Global Sales across Platform') +
+              theme(axis.text.x = element_text(size = 12,angle = 45,hjust = 1)) +
+              ylab("Proportion") + scale_fill_brewer(palette="Pastel1")
+
+#Polar Plot Overview
+
+Sales_Polar<- ggplot(data=datafull) + 
+  geom_bar(mapping=aes(x = newPlatform, y= GlobalS, fill= newPlatform),stat="identity")+ 
+  scale_fill_brewer(palette="Pastel1") + 
+  theme_bw() +  
+  labs(x= "Platform", y="Global Sales", fill = "Platform")+ 
+  coord_polar()+ 
+  labs(title = 'Platform Comparison on Global Sales')
+```
+
+```{r}
+#####3.1Genre vs. no.of games
+  
+gcount <- as.data.frame(table(datafull$Year_of_Release,datafull$Genre))
+colnames(gcount) <- c("Year","Genre","Number_of_Games")
+gcount1 = gcount[gcount$Genre!="",]
+
+#Bubble plot comparison
+
+p2<- ggplot(gcount1,aes(x= Year,y= Genre)) +
+  geom_point(aes(size=Number_of_Games),color="dodgerblue4") +
+  theme(axis.text.x = element_text(size = 12,angle = 45,hjust = 1)) +
+  labs(title='Genre Comparison on Number of Game Released')
+
+######3.2 Sales vs. Genre 
+
+#Box Plot Grid-View
+GenS<- ggplot(data=datafull) + 
+  geom_boxplot(mapping = aes(x = Genre, y= GlobalS, color=Genre)) + 
+  ylim(0,10) +
+  theme(axis.text.x = element_text(size = 10,angle = 45,hjust = 1))+
+  labs(title='Genre Comparison on Global Sales')
+
+RatingS <- ggplot(data=datafull) + 
+  geom_boxplot(mapping = aes(x = Rating, y= GlobalS, color=Rating)) + 
+  ylim(0,10) +
+  theme(axis.text.x = element_text(size = 10,angle = 45,hjust = 1))+
+  labs(title='Rating Comparison on Global Sales')
+
+PlatformS <- ggplot(data=datafull) + 
+  geom_boxplot(mapping = aes(x = newPlatform, y= GlobalS, color=newPlatform)) + 
+  ylim(0,10) +
+  theme(axis.text.x = element_text(size = 10,angle = 45,hjust = 1))+
+  labs(x="Platform", color="Platform",title='Platform Comparison on Global Sales')
+
+PublisherS <- ggplot(data=datafull) + 
+  geom_boxplot(mapping = aes(x = as.factor(is_popular), y= GlobalS, color=factor(is_popular))) + 
+  ylim(0,10) + 
+  theme(legend.title = element_blank()) + 
+  labs(x="If the publisher is popular",title='Popular Publishers Comparison on Global Sales')
+
+gridExtra::grid.arrange(GenS, RatingS, PlatformS, PublisherS, nrow=2)
+
+#Global Sales vs Genre
+Globalgs<- ggplot(data=AllSales) + 
+  geom_bar(mapping=aes(x = Year_of_Release, y= GlobalS, fill=Genre), stat="identity") 
+
+#Sales vs. Genre by Region - Bar Plot gridview
+NAgs <- ggplot(data=AllSales) + 
+  geom_bar(mapping=aes(x = Genre, y=NAS, fill=Genre), show.legend = FALSE , stat="identity", alpha= 0.5, position = "identity")
+JPgs <- ggplot(data=AllSales) + 
+  geom_bar(mapping=aes(x = Genre, y=JPS, fill=Genre), show.legend = FALSE , stat="identity", alpha= 0.5, position = "identity")
+EUgs <- ggplot(data=AllSales) + 
+  geom_bar(mapping=aes(x = Genre, y=EUS, fill=Genre), show.legend = FALSE , stat="identity", alpha= 0.5, position = "identity")
+Othergs <- ggplot(data=AllSales) + 
+  geom_bar(mapping=aes(x = Genre, y=OtherS, fill=Genre), show.legend = FALSE , stat="identity", alpha= 0.5, position = "identity")
+NAgs <- NAgs + coord_flip()
+JPgs <- JPgs+ coord_flip()
+EUgs <- EUgs+ coord_flip()
+Othergs <- Othergs+ coord_flip()
+gridExtra::grid.arrange(NAgs, JPgs, EUgs, Othergs, nrow=2)
+```
+
+```{r}
+#####4.1Rating vs. no.of games
+  
+rcount <- as.data.frame(table(datafull$Genre,datafull$Rating))
+colnames(rcount) <- c("Genre","Rating","Number_of_Games")
+
+#Stacked bar chart comparison(Rating & Genre)
+
+p3<- ggplot(rcount,aes(x= Genre,y= Number_of_Games,fill= Rating)) +
+  geom_bar(stat="identity",position = "stack") +
+  labs(title='Number of Game Released across Genre and Rating') +
+  theme(axis.text.x = element_text(size = 12,angle = 45,hjust = 1)) 
+
+######4.2 Sales vs. Rating - BarChart
+RatP<-ggplot(data=AllSales) + 
+  geom_bar(mapping = aes(x = Rating, y= GlobalS, fill =newPlatform),alpha=0.8, stat='identity') + 
+  labs(title='Global Sales across Rating and Platform')
+
+RatG<- ggplot(data=AllSales) + 
+  geom_bar(mapping = aes(x = Rating, y= GlobalS, fill=Rating),alpha=0.8, stat='identity') + 
+  facet_wrap(~Genre) + 
+  labs(title='Global Sales across Rating and Genre')
+```
+
+```{r}
+#####5.1Publisher vs. no.of games
+pubcount <- as.data.frame(table(datafull$Publisher))
+
+#rank by no.games&choose top 10
+pubcount.ord = pubcount[order(pubcount$Freq,decreasing=T),]
+pubcount.top = head(pubcount.ord,10)
+
+#barchart
+p5 <- ggplot(pubcount.top,aes(x=factor(Var1, level=Var1),y=Freq))+
+  geom_bar(stat="identity",fill="#003366")+
+  theme(axis.text.x = element_text(size = 12,angle = 45,hjust = 1))+
+  ylab("Number of Games") + 
+  xlab("Publisher") +
+  labs(title="Top 10 Publishers on Number of Games")
+
+######5.2 Sales vs.Publisher - Bar Plot
+pubs<-datafull%>%dplyr::select(Year_of_Release,Publisher,GlobalS)%>%group_by(Publisher)%>%
+  summarise(GlobalS=sum(GlobalS))%>%
+  arrange(desc(GlobalS))%>%
+  head(10)%>%
+  ggplot(aes(x=factor(Publisher,level=Publisher),y=GlobalS))+
+  geom_bar(stat="identity",fill="#333366")+ theme(legend.position="none")+
+  labs(x="Publisher",y="Total Sales",title="Top 10 Publishers on Global Sales")+
+  theme(axis.text.x = element_text(size = 12,angle = 45,hjust = 1))
+```
+
+```{r}
+######6 Sales vs. Critic Score & User Score - Scatter Plot with Trendline
+#Global Sales & Critic/User Score
+Score1 <- ggplot(data=datafull,mapping = aes(x = Critic_Score, y= GlobalS)) + 
+          geom_point()+ 
+          ylim(0,10)+ 
+          geom_smooth()+
+          labs(title="Critic Score vs. Global Sales")
+
+Score2 <- ggplot(data=datafull,mapping = aes(x = User_Score, y= GlobalS)) + 
+  geom_point()+ 
+  ylim(0,10)+ 
+  geom_smooth()+
+  labs(title="User Score vs. Global Sales")
+
+#Regional Sales & Critic Score
+ScoreNA<- ggplot(data=datafull,mapping = aes(x = Critic_Score, y= NAS)) + 
+  geom_point()+ 
+  ylim(0,10)+ 
+  geom_smooth()+ theme(legend.position="none") +
+  labs(title="Critic Score vs. NA Sales")
+
+ScoreJP <- ggplot(data=datafull,mapping = aes(x = Critic_Score, y= JPS)) + 
+  geom_point()+ 
+  ylim(0,10)+ 
+  geom_smooth()+ theme(legend.position="none") +
+  labs(title="Critic Score vs. Japan Sales")
+
+ScoreEU <- ggplot(data=datafull,mapping = aes(x = Critic_Score, y= EUS)) + 
+  geom_point()+ 
+  ylim(0,10)+ 
+  geom_smooth()+ theme(legend.position="none") +
+  labs(title="Critic Score vs. Europe Sales")
+
+ScoreOther <- ggplot(data=datafull,mapping = aes(x = Critic_Score, y= OtherS)) + 
+  geom_point()+ 
+  ylim(0,10)+ 
+  geom_smooth()+ theme(legend.position="none") +
+  labs(title="Critic Score vs. Other Region Sales")
+
+gridExtra::grid.arrange(ScoreNA, ScoreJP, ScoreEU, ScoreOther, nrow=2)
+
+#Regional Sales & User Score
+UScoreNA<- ggplot(data=datafull,mapping = aes(x = User_Score, y= NAS)) + 
+  geom_point()+ 
+  ylim(0,10)+ 
+  geom_smooth()+ theme(legend.position="none") +
+  labs(title="User Score vs. NA Sales")
+
+UScoreJP <- ggplot(data=datafull,mapping = aes(x = User_Score, y= JPS)) + 
+  geom_point()+ 
+  ylim(0,10)+ 
+  geom_smooth()+ theme(legend.position="none") +
+  labs(title="User Score vs. Japan Sales")
+
+UScoreEU <- ggplot(data=datafull,mapping = aes(x = User_Score, y= EUS)) + 
+  geom_point()+ 
+  ylim(0,10)+ 
+  geom_smooth()+ theme(legend.position="none") +
+  labs(title="User Score vs. Europe Sales")
+
+UScoreOther <- ggplot(data=datafull,mapping = aes(x = User_Score, y= OtherS)) + 
+  geom_point()+ 
+  ylim(0,10)+ 
+  geom_smooth()+ theme(legend.position="none") +
+  labs(title="User Score vs. Other Region Sales")
+
+gridExtra::grid.arrange(UScoreNA, UScoreJP, UScoreEU, UScoreOther, nrow=2)
+
+#Critic Score & Global Sales by Genre
+ScoreGe <- ggplot(data=datafull,mapping = aes(x = Critic_Score, y= GlobalS)) + 
+  geom_point(aes(color = Genre),alpha=.5)+ 
+  ylim(0,10)+ 
+  geom_smooth()+ facet_wrap(~Genre)+
+  labs(title="Critic Score vs. Global Sales by Genre")
+
+#User Score & Global Sales by Genre
+UScoreGe <- ggplot(data=datafull,mapping = aes(x = User_Score, y= GlobalS)) + 
+  geom_point(aes(color = Genre),alpha=.5)+ 
+  ylim(0,10)+ 
+  geom_smooth()+ facet_wrap(~Genre)+
+  labs(title="User Score vs. Global Sales by Genre")
+
+#User Score Count
+hist(datafull$User_Score,breaks=100, freq = F, main="User Score Histogram vs Fitted Normal Density", cex.main = 0.9)
+m_us <- mean(datafull$User_Score)
+sd_us <- sd(datafull$User_Score)
+curve(dnorm(x,mean=m_us ,sd = sd_us),col = "red", add = TRUE)
+
+#Critic Score Count
+hist(datafull$Critic_Score,breaks=100, freq = F, main="Critic Score Histogram vs Fitted Normal Density", cex.main = 0.9)
+m_cs <- mean(datafull$Critic_Score)
+sd_cs <- sd(datafull$Critic_Score)
+curve(dnorm(x,mean=m_cs ,sd = sd_cs),col = "red", add = TRUE)
+
+```
+
+
+```{r}
+#move the global sale column as the last column
+datasale=datafull[,c(1:9,11:18,10)]
+#head(datasale)
+```
+
+#correlation plot
+```{r}
+
+#correlation with regional sale
+library(ggcorrplot)
+correlation_data=cor(datasale[,c(6:13,15,18)])
+correlation_data
+corrplot(correlation_data)
+
+
+#correlation without regional sales data
+correlation_data=cor(datasale[,c(10:13,15,18)])
+correlation_data
+corrplot(correlation_data,method="number")
+
+```
+#analyse the response variable
+```{r}
+library(ggplot2)
+ggplot(data=datasale, aes(y=GlobalS)) + geom_boxplot(fill="#56B4E9", color='darkblue') + ylim(0,25) + ggtitle("Boxplot of Global Sales") +theme(plot.title = element_text(hjust = 0.5))
+
+ggplot(datasale, aes(x=GlobalS)) + 
+ geom_histogram(aes(y=..density..), colour="black", fill="#56B4E9")+
+ geom_density(alpha=.2, fill="#FF6666") +xlim(0,25) + ggtitle("Histogram of Global Sales") + theme(plot.title = element_text(hjust = 0.5))
+
+summary(datasale$GlobalS)
+sd(datasale$GlobalS)
+```
+
+
+#numrical predictor
+#scatter plot  VS globalsale
+```{r}
+datanum=datasale[,c(10:13,15,18)]
+head(datanum)
+par(mfrow=c(2,2))
+for (i in 1:5 ) {
+  plot(datanum[,i],datanum$GlobalS,xlab=colnames(datanum[i]),ylab="Global Sale")
+}
+
+```
+
+#histogram of numerical variable
+```{r}
+
+for (i in 1:5 ) {
+print(ggplot(datasale, aes(x=datanum[,i])) + 
+ geom_histogram(colour="black", fill="#56B4E9")+
+ggtitle(paste("Histogram of", colnames(datanum[i]))) + theme(plot.title = element_text(hjust = 0.5))+  xlab(colnames(datanum[i])))
+}
+```
+
+```{r}
+#median and IQR
+aggregate(GlobalS~Genre,data=datasale,median)
+aggregate(GlobalS~Rating,data=datasale,median)
+aggregate(GlobalS~newPlatform,data=datasale,median)
+aggregate(GlobalS~is_popular,data=datasale,median)
+
+aggregate(GlobalS~Genre,data=datasale,IQR)
+aggregate(GlobalS~Rating,data=datasale,IQR)
+aggregate(GlobalS~newPlatform,data=datasale,IQR)
+aggregate(GlobalS~is_popular,data=datasale,IQR)
+```
+
+
+#categorical predictor
+```{r}
+head(datasale)
+datacat=datasale[,c(4,14,16:18)]
+head(datacat)
+par(mfrow=c(2,2))
+for (i in 1:4 ) {
+  boxplot(datacat$GlobalS~datacat[,i],main=colnames(datacat[i]),las=2)
+}
+
+```
+
+```{r}
+datasale$is_highsale=ifelse(datasale$GlobalS>0.75,1,0)
+
+```
+
+#mosaic plot
+```{r}
+library(ggmosaic)
+library(ggplot2)
+
+ggplot(data=datasale)+
+    ggmosaic::geom_mosaic(aes(x=product(is_highsale), fill=Genre))+
+     labs(x="is high sale or not",y="Genre")
+
+ggplot(data=datasale)+
+    ggmosaic::geom_mosaic(aes(x=product(is_highsale), fill=newPlatform))+
+     labs(x="is high sale or not",y="newPlatform")
+     
+ggplot(data=datasale)+
+    ggmosaic::geom_mosaic(aes(x=product(is_highsale), fill=Rating))+
+     labs(x="is high sale or not",y="Rating")
+
+datasale$is_popular=as.factor(datasale$is_popular)
+ggplot(data=datasale)+
+    ggmosaic::geom_mosaic(aes(x=product(is_highsale), fill=is_popular))+
+     labs(x="is high sale or not",y="is_popular")
+
+
+```
+
+
+#baseline model
+```{r}
+set.seed(101)
+datasale$is_popular=as.numeric(datasale$is_popular)
+n_total = length(datasale[,1])
+train = sample(1:n_total, 0.7*n_total)
+sample_train= datasale[train,]
+sample_test= datasale[-train,]
+Y_train = datasale[train,"is_highsale"] 
+Y_test= datasale[-train,"is_highsale"] 
+
+#baseline
+mean(Y_train == 0) #0.7476891
+mean(Y_test == 0) #0.7618814
+length(Y_train)
+length(Y_test)
+
+#set the outcome always be 0
+base_pred=rep.int(0,4760)
+factor(base_pred,levels=c(0,1))
+table(base_pred,Y_train)
+b_error_rate_train=1201/4760
+b_error_rate_train # 0.2523109
+
+base_pred_test=rep.int(0,2041)
+factor(base_pred_test,levels=c(0,1))
+table(base_pred_test,Y_test)
+b_error_rate_test=486/2041
+b_error_rate_test #0.2381186
+```
+
+#logistic regression
+```{r}
+#with all predictors
+sim_logit <- glm(is_highsale~Critic_Score + Critic_Count + User_Score + User_Count + Age + Genre + Rating + newPlatform+ is_popular, data = sample_train, family = "binomial")
+summary(sim_logit)
+
+sim_pred_train <- predict(sim_logit,type="response")
+sim_pred_train <-ifelse(sim_pred_train > 0.5,1,0)
+table(sim_pred_train,sample_train$is_highsale)
+s1_error_rate_train=(656+208)/4760
+s1_error_rate_train #0.1815126
+
+sim_pred_test <- predict(sim_logit,sample_test,type="response")
+sim_pred_test <-ifelse(sim_pred_test > 0.5,1,0)
+table(sim_pred_test,sample_test$is_highsale)
+s1_error_rate_test=(258+80)/2041
+s1_error_rate_test #0.1656051
+
+
+
+```
+
+#see the importance of varaible
+```{r}
+anova(sim_logit,test='Chisq')
+```
+
+#VIF calculation
+```{r}
+library(car)
+vif(sim_logit)
+```
+
+
+
