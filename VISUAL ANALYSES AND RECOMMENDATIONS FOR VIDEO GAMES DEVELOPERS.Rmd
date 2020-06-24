@@ -1,6 +1,5 @@
 ---
-title: "group11finalproject"
-author: "Group 11"
+title: "VISUAL ANALYSES AND RECOMMENDATIONS FOR VIDEO GAMES DEVELOPERS"
 date: "2019年10月11日"
 output: html_document
 ---
